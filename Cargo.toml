@@ -1,0 +1,11 @@
+[package]
+name = "llvm-rust-playground"
+version = "0.1.0"
+authors = ["rchaser53 <tayoshizawa29@gmail.com>"]
+
+[dependencies]
+libc = "0.2"
+llvm-sys = "60"
+
+[build-dependencies]
+cc = "1.0"
