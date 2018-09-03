@@ -113,18 +113,25 @@ impl LlvmBuilder {
     }
 
     pub fn emit_file(&self, filename: &str) {
-        let error_message = c_string!("").as_ptr();
-        unsafe {
-            if LLVMPrintModuleToFile(
-                self.module,
-                c_string!(filename).as_ptr(),
-                error_message as *mut _,
-            ) == 0
-            {
-                println!("{:?}", error_message);
-            }
-            LLVMDisposeMessage(error_message as *mut _);
-        }
+      unsafe {
+        LLVMPrintModuleToFile(
+            self.module,
+            c_string!(filename).as_ptr(),
+            c_string!("").as_ptr() as *mut _,
+        );
+      }
+        // let error_message = c_string!("").as_ptr();
+        // unsafe {
+        //     if LLVMPrintModuleToFile(
+        //         self.module,
+        //         c_string!(filename).as_ptr(),
+        //         error_message as *mut _,
+        //     ) == 0
+        //     {
+        //         println!("{:?}", error_message);
+        //     }
+        //     LLVMDisposeMessage(error_message as *mut _);
+        // }
     }
 }
 
