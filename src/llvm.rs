@@ -6,6 +6,13 @@ use llvm_sys::*;
 
 // const LLVM_ERROR: i32 = 1;
 
+#[macro_export]
+macro_rules! c_string {
+    ($w:expr) => {
+        CString::new($w).unwrap()
+    };
+}
+
 pub fn int32_type() -> *mut LLVMType {
     unsafe { LLVMInt32Type() }
 }
@@ -31,9 +38,9 @@ impl LlvmBuilder {
     }
 
     pub fn setup_main(&mut self) {
-      self.add_function(int32_type(), &mut [], "main");
-      let block = self.append_basic_block("main", "entry");
-      self.end_basic_block(block);
+        self.add_function(int32_type(), &mut [], "main");
+        let block = self.append_basic_block("main", "entry");
+        self.end_basic_block(block);
     }
 
     pub fn add_function(
@@ -104,6 +111,21 @@ impl LlvmBuilder {
     pub fn dump(&self) {
         unsafe { LLVMDumpModule(self.module) }
     }
+
+    pub fn emit_file(&self, filename: &str) {
+        let error_message = c_string!("").as_ptr();
+        unsafe {
+            if LLVMPrintModuleToFile(
+                self.module,
+                c_string!(filename).as_ptr(),
+                error_message as *mut _,
+            ) == 0
+            {
+                println!("{:?}", error_message);
+            }
+            LLVMDisposeMessage(error_message as *mut _);
+        }
+    }
 }
 
 impl Drop for LlvmBuilder {
@@ -114,50 +136,65 @@ impl Drop for LlvmBuilder {
     }
 }
 
-#[macro_export]
-macro_rules! c_string {
-  ($w:expr) => ( CString::new($w).unwrap() );
-}
-
 pub struct BuilderFunctions {}
 
 impl BuilderFunctions {
-  pub fn set_up(&mut self, builder: *mut LLVMBuilder, context: *mut LLVMContext, module: *mut LLVMModule) {
-    unsafe {
-      let print = self.create_printf(module);
-      let mut printf_args = [
-        codegen_string(module, context, "%d\n"),
-        LLVMConstInt(LLVMInt32Type(), 15, 0)
-      ];
+    pub fn set_up(
+        &mut self,
+        builder: *mut LLVMBuilder,
+        context: *mut LLVMContext,
+        module: *mut LLVMModule,
+    ) {
+        unsafe {
+            let print = self.create_printf(module);
+            let mut printf_args = [
+                codegen_string(module, context, "%d\n"),
+                LLVMConstInt(LLVMInt32Type(), 15, 0),
+            ];
 
-      LLVMBuildCall(builder, print, printf_args.as_mut_ptr(), 2, c_string!("").as_ptr());
-    } 
-  }
-
-  pub fn create_printf(&mut self, module: *mut LLVMModule) -> *mut LLVMValue {
-    unsafe {
-      let mut printf_args_type_list = [LLVMPointerType(LLVMInt8Type(), 0)];
-      let printf_type = LLVMFunctionType(LLVMInt32Type(), printf_args_type_list.as_mut_ptr(), 0, 1);
-      return LLVMAddFunction(module, CString::new("printf").unwrap().as_ptr() as *mut _, printf_type);
+            LLVMBuildCall(
+                builder,
+                print,
+                printf_args.as_mut_ptr(),
+                2,
+                c_string!("").as_ptr(),
+            );
+        }
     }
-  }
+
+    pub fn create_printf(&mut self, module: *mut LLVMModule) -> *mut LLVMValue {
+        unsafe {
+            let mut printf_args_type_list = [LLVMPointerType(LLVMInt8Type(), 0)];
+            let printf_type =
+                LLVMFunctionType(LLVMInt32Type(), printf_args_type_list.as_mut_ptr(), 0, 1);
+            return LLVMAddFunction(
+                module,
+                CString::new("printf").unwrap().as_ptr() as *mut _,
+                printf_type,
+            );
+        }
+    }
 }
 
-pub fn codegen_string(module: *mut LLVMModule, context: *mut LLVMContext, input_str: &str) -> *mut LLVMValue {
-  let length = input_str.len() as u32;
-  unsafe {
-    let str_val = LLVMConstStringInContext(context, c_string!(input_str).as_ptr(), length, 0);
-    let g_str = LLVMAddGlobal(module, LLVMTypeOf(str_val), c_string!("").as_ptr());
-    LLVMSetLinkage(g_str, LLVMLinkage::LLVMPrivateLinkage);
-    LLVMSetInitializer(g_str, str_val);
+pub fn codegen_string(
+    module: *mut LLVMModule,
+    context: *mut LLVMContext,
+    input_str: &str,
+) -> *mut LLVMValue {
+    let length = input_str.len() as u32;
+    unsafe {
+        let str_val = LLVMConstStringInContext(context, c_string!(input_str).as_ptr(), length, 0);
+        let g_str = LLVMAddGlobal(module, LLVMTypeOf(str_val), c_string!("").as_ptr());
+        LLVMSetLinkage(g_str, LLVMLinkage::LLVMPrivateLinkage);
+        LLVMSetInitializer(g_str, str_val);
 
-    let mut args = [
-      LLVMConstInt(LLVMInt32Type(), 0, 0),
-      LLVMConstInt(LLVMInt32Type(), 0, 0)
-    ];
+        let mut args = [
+            LLVMConstInt(LLVMInt32Type(), 0, 0),
+            LLVMConstInt(LLVMInt32Type(), 0, 0),
+        ];
 
-    return LLVMConstInBoundsGEP(g_str, args.as_mut_ptr(), 2);
-  }
+        return LLVMConstInBoundsGEP(g_str, args.as_mut_ptr(), 2);
+    }
 }
 
 // pub fn run_function(
