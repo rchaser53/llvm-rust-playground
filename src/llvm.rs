@@ -1,42 +1,13 @@
 use std::ffi::CString;
 
 use llvm_sys::core::*;
-use llvm_sys::execution_engine::*;
+// use llvm_sys::execution_engine::*;
 use llvm_sys::*;
 
-const LLVM_ERROR: i32 = 1;
+// const LLVM_ERROR: i32 = 1;
 
 pub fn int32_type() -> *mut LLVMType {
     unsafe { LLVMInt32Type() }
-}
-
-pub fn int64_type() -> *mut LLVMType {
-    unsafe { LLVMInt64Type() }
-}
-
-// create our exe engine
-pub fn excute_module_by_interpreter(
-    engine_ref: *mut LLVMExecutionEngineRef,
-    module: *mut LLVMModule,
-) -> Result<i32, String> {
-    let mut error = 0 as *mut ::libc::c_char;
-    let status = unsafe {
-        let buf: *mut *mut ::libc::c_char = &mut error;
-        LLVMLinkInInterpreter();
-        LLVMCreateInterpreterForModule(engine_ref, module, buf)
-    };
-
-    if status == LLVM_ERROR {
-        let err_msg = unsafe { CString::from_raw(error).into_string().unwrap() };
-        return Err(err_msg);
-    }
-
-    Ok(status)
-}
-
-pub fn add_module(module_name: &str) -> *mut LLVMModule {
-    let mod_name = CString::new(module_name).unwrap();
-    unsafe { LLVMModuleCreateWithName(mod_name.as_ptr()) }
 }
 
 pub struct LlvmBuilder {
@@ -47,8 +18,6 @@ pub struct LlvmBuilder {
 
 impl LlvmBuilder {
     pub fn new(module_name: &str) -> LlvmBuilder {
-        LlvmBuilder::initialize();
-
         unsafe {
             let context = LLVMGetGlobalContext();
             let mod_name = CString::new(module_name).unwrap();
@@ -57,17 +26,6 @@ impl LlvmBuilder {
                 builder: LLVMCreateBuilder(),
                 module: LLVMModuleCreateWithName(mod_name.as_ptr()),
                 context: context,
-            }
-        }
-    }
-
-    pub fn initialize() {
-        unsafe {
-            if target::LLVM_InitializeNativeTarget() != 0 {
-                panic!("Could not initialize target");
-            }
-            if target::LLVM_InitializeNativeAsmPrinter() != 0 {
-                panic!("Could not initialize ASM Printer");
             }
         }
     }
@@ -141,23 +99,6 @@ impl LlvmBuilder {
         }
     }
 
-    pub fn run_function(
-        &mut self,
-        engine: *mut LLVMOpaqueExecutionEngine,
-        named_function: *mut LLVMValue,
-        params: &mut [*mut LLVMOpaqueGenericValue],
-    ) -> u64 {
-        let func_result = unsafe {
-            LLVMRunFunction(
-                engine,
-                named_function,
-                params.len() as u32,
-                params.as_mut_ptr(),
-            )
-        };
-        unsafe { LLVMGenericValueToInt(func_result, 0) }
-    }
-
     /* need refactoring above */
 
     pub fn dump(&self) {
@@ -172,3 +113,95 @@ impl Drop for LlvmBuilder {
         }
     }
 }
+
+#[macro_export]
+macro_rules! c_string {
+  ($w:expr) => ( CString::new($w).unwrap() );
+}
+
+pub struct BuilderFunctions {}
+
+impl BuilderFunctions {
+  pub fn set_up(&mut self, builder: *mut LLVMBuilder, context: *mut LLVMContext, module: *mut LLVMModule) {
+    unsafe {
+      let print = self.create_printf(module);
+      let mut printf_args = [
+        codegen_string(module, context, "%d\n"),
+        LLVMConstInt(LLVMInt32Type(), 15, 0)
+      ];
+
+      LLVMBuildCall(builder, print, printf_args.as_mut_ptr(), 2, c_string!("").as_ptr());
+    } 
+  }
+
+  pub fn create_printf(&mut self, module: *mut LLVMModule) -> *mut LLVMValue {
+    unsafe {
+      let mut printf_args_type_list = [LLVMPointerType(LLVMInt8Type(), 0)];
+      let printf_type = LLVMFunctionType(LLVMInt32Type(), printf_args_type_list.as_mut_ptr(), 0, 1);
+      return LLVMAddFunction(module, CString::new("printf").unwrap().as_ptr() as *mut _, printf_type);
+    }
+  }
+}
+
+pub fn codegen_string(module: *mut LLVMModule, context: *mut LLVMContext, input_str: &str) -> *mut LLVMValue {
+  let length = input_str.len() as u32;
+  unsafe {
+    let str_val = LLVMConstStringInContext(context, c_string!(input_str).as_ptr(), length, 0);
+    let g_str = LLVMAddGlobal(module, LLVMTypeOf(str_val), c_string!("").as_ptr());
+    LLVMSetLinkage(g_str, LLVMLinkage::LLVMPrivateLinkage);
+    LLVMSetInitializer(g_str, str_val);
+
+    let mut args = [
+      LLVMConstInt(LLVMInt32Type(), 0, 0),
+      LLVMConstInt(LLVMInt32Type(), 0, 0)
+    ];
+
+    return LLVMConstInBoundsGEP(g_str, args.as_mut_ptr(), 2);
+  }
+}
+
+// pub fn run_function(
+//     &mut self,
+//     engine: *mut LLVMOpaqueExecutionEngine,
+//     named_function: *mut LLVMValue,
+//     params: &mut [*mut LLVMOpaqueGenericValue],
+// ) -> u64 {
+//     let func_result = unsafe {
+//         LLVMRunFunction(
+//             engine,
+//             named_function,
+//             params.len() as u32,
+//             params.as_mut_ptr(),
+//         )
+//     };
+//     unsafe { LLVMGenericValueToInt(func_result, 0) }
+// }
+
+// pub fn int64_type() -> *mut LLVMType {
+//     unsafe { LLVMInt64Type() }
+// }
+
+// create our exe engine
+// pub fn excute_module_by_interpreter(
+//     engine_ref: *mut LLVMExecutionEngineRef,
+//     module: *mut LLVMModule,
+// ) -> Result<i32, String> {
+//     let mut error = 0 as *mut ::libc::c_char;
+//     let status = unsafe {
+//         let buf: *mut *mut ::libc::c_char = &mut error;
+//         LLVMLinkInInterpreter();
+//         LLVMCreateInterpreterForModule(engine_ref, module, buf)
+//     };
+
+//     if status == LLVM_ERROR {
+//         let err_msg = unsafe { CString::from_raw(error).into_string().unwrap() };
+//         return Err(err_msg);
+//     }
+
+//     Ok(status)
+// }
+
+// pub fn add_module(module_name: &str) -> *mut LLVMModule {
+//     let mod_name = CString::new(module_name).unwrap();
+//     unsafe { LLVMModuleCreateWithName(mod_name.as_ptr()) }
+// }
