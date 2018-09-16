@@ -5,7 +5,11 @@ authors = ["rchaser53 <tayoshizawa29@gmail.com>"]
 
 [dependencies]
 libc = "0.2"
-llvm-sys = "60"
+rustc-llvm-proxy = "0.1"
+
+[dependencies.llvm-sys]
+version = "60.2"
+features = ["no-llvm-linking"]
 
 [build-dependencies]
 cc = "1.0"
